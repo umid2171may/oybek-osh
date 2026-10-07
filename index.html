@@ -101,6 +101,11 @@ h1{font:800 clamp(19px,5.6vw,26px)/1.12 Unbounded,sans-serif;margin:0 0 14px;let
 .gc h2{font:800 24px/1.15 Unbounded,sans-serif;margin:8px 0 8px}.gc p{color:var(--mute);margin:0 0 6px}
 .mh{display:flex;justify-content:space-between;align-items:center;margin:0 20px 14px}.mh h2{margin:0}
 .lo{font-size:12.5px;color:var(--mute);padding:8px 12px;background:rgba(255,255,255,.07);border-radius:12px}
+.adm{position:fixed;right:14px;top:calc(58px + env(safe-area-inset-top,0px));z-index:95;width:42px;height:42px;border-radius:50%;background:rgba(13,10,8,.75);border:1px solid rgba(255,255,255,.22);display:none;place-items:center;font-size:19px}
+.adm.show{display:grid}
+.admov{position:fixed;inset:0;z-index:100;background:#140a07;display:none;flex-direction:column}.admov.on{display:flex}
+.admbar{display:flex;justify-content:space-between;align-items:center;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 10px;font-weight:800;border-bottom:1px solid var(--line)}
+.admov iframe{flex:1;border:0;width:100%;background:#140a07}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition-duration:.01s!important}}
 </style></head>
 <body>
@@ -122,6 +127,8 @@ h1{font:800 clamp(19px,5.6vw,26px)/1.12 Unbounded,sans-serif;margin:0 0 14px;let
 <div class="ov" id="ov"></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
 <div class="toast" id="toast"></div>
+<button class="adm" id="adm" aria-label="Админ">⚙️</button>
+<div class="admov" id="admov"><div class="admbar"><span>⚙️ Админ панель</span><button class="lo" id="admx">✕ Ёпиш</button></div></div>
 <div class="gate" id="gate"><div class="gc"><small>Oybek Osh Markazi</small><h2>Хуш келибсиз!</h2><p>Буюртма бериш учун исм ва телефон рақамингизни киритинг. SMS код керак эмас.</p><input class="f" id="g_n" placeholder="Исмингиз" autocomplete="name"><input class="f" id="g_ph" type="tel" inputmode="tel" placeholder="+998 90 123 45 67" autocomplete="tel"><button class="go" id="gin">Кириш</button></div></div>
 <script>
 const CFG={bot:"YOUR_TELEGRAM_USERNAME",fee:12000,statusUrl:""};
@@ -200,6 +207,11 @@ $("gin").onclick=async()=>{const n=$("g_n"),p=$("g_ph");let bad=0;[[n,n.value.tr
 let tok="";try{const r=await fetch("/api/register",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({name:n.value.trim(),phone:p.value})});if(r.ok)tok=(await r.json()).tok}catch(e){}
 U={n:n.value.trim(),ph:p.value,tok};try{localStorage.setItem("uu",JSON.stringify(U))}catch(e){}hap("medium");enter()}}
 if(U&&U.ph)enter();else document.body.classList.add("lock");
+const TGD=tg&&tg.initData||"";
+function openAdm(){let f=$("admf");if(!f){f=document.createElement("iframe");f.id="admf";f.src="/admin"+(TGD?"#tg="+encodeURIComponent(TGD):"");$("admov").appendChild(f)}$("admov").classList.add("on");document.body.classList.add("lock")}
+$("adm").onclick=openAdm;$("admx").onclick=()=>{$("admov").classList.remove("on");if($("gate").classList.contains("off"))document.body.classList.remove("lock")};
+if(TGD)fetch("/api/me",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({initData:TGD})}).then(r=>r.json()).then(j=>{if(j.admin)$("adm").classList.add("show")}).catch(()=>{});
+{let tp=[];document.querySelector(".top span").addEventListener("click",()=>{const n=Date.now();tp=tp.filter(x=>n-x<1200);tp.push(n);if(tp.length>=3){tp=[];openAdm()}})}
 function sync(m){MENU=m;[...cart.keys()].forEach(id=>{const x=m.find(y=>y.id===id);if(!x||x.out)cart.delete(id)});build()}
 const ld=()=>fetch("/api/menu").then(r=>r.json()).then(m=>{if(Array.isArray(m)&&m.length&&!$("sheet").classList.contains("on"))sync(m)}).catch(()=>{});ld();document.addEventListener("visibilitychange",()=>{if(!document.hidden)ld()});
 if(tg){tg.ready();tg.expand();try{tg.setHeaderColor("#0d0a08");tg.setBackgroundColor("#0d0a08");tg.disableVerticalSwipes&&tg.disableVerticalSwipes()}catch(e){}}

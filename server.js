@@ -46,6 +46,11 @@ async function onUpdate(u){const q=u.callback_query;if(!q)return;
   const m=/^s:(\d+):(\d)$/.exec(q.data||"");if(!m)return;const o=orders.find(x=>x.id==m[1]);if(!o)return;
   setStatus(o,+m[2]);await chain;await tg("answerCallbackQuery",{callback_query_id:q.id,text:EM[o.s]+" "+ST[o.s]});
   await tg("editMessageText",{chat_id:q.message.chat.id,message_id:q.message.message_id,text:otext(o),reply_markup:o.s>=3?undefined:kb(o.id)})}
+function tgUser(init){try{if(!BOT||!init)return null;const q=new URLSearchParams(init),h=q.get("hash");if(!h)return null;q.delete("hash");
+ const dcs=[...q.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([k,v])=>k+"="+v).join("\n"),sec=crypto.createHmac("sha256","WebAppData").update(BOT).digest(),
+ c=crypto.createHmac("sha256",sec).update(dcs).digest("hex");if(c.length!==h.length||!crypto.timingSafeEqual(Buffer.from(c),Buffer.from(h)))return null;
+ if(Date.now()/1e3-(+q.get("auth_date")||0)>86400*3)return null;return JSON.parse(q.get("user"))}catch(e){return null}}
+const isTgAdmin=init=>{const u=tgUser(init);return !!u&&CHATS.includes(String(u.id))};
 const bad=new Map(),rate=new Map();
 const hit=(m,k,max,ms)=>{const n=Date.now(),a=(m.get(k)||[]).filter(t=>n-t<ms);a.push(n);m.set(k,a);return a.length>max};
 const body=req=>new Promise((ok,no)=>{let b="",n=0;req.on("data",c=>{n+=c.length;if(n>25e6){no();req.destroy()}else b+=c});req.on("end",()=>{try{ok(JSON.parse(b||"{}"))}catch(e){no(e)}})});
@@ -56,6 +61,7 @@ const srv=http.createServer(async(req,res)=>{
  try{
   if(p==="/api/menu")return send(res,200,menu);
   if(p==="/api/status"){const o=orders.find(x=>x.id==u.searchParams.get("id"));return send(res,o?200:404,{s:o?o.s:0})}
+  if(p==="/api/me"&&req.method==="POST"){const b=await body(req);return send(res,200,{admin:isTgAdmin(b.initData)})}
   if(p==="/healthz"){res.writeHead(200);return res.end("ok")}
   if(p==="/tg/"+HOOK&&req.method==="POST"){const u2=await body(req);await onUpdate(u2);res.writeHead(200);return res.end("ok")}
   if(p.startsWith("/img/")){const v=imgs[p.slice(5)],m=v&&/^data:([^;]+);base64,(.*)$/.exec(v);if(!m){res.writeHead(404);return res.end()}res.writeHead(200,{"Content-Type":m[1],"Cache-Control":"public,max-age=31536000,immutable"});return res.end(Buffer.from(m[2],"base64"))}
@@ -78,7 +84,7 @@ const srv=http.createServer(async(req,res)=>{
    for(const c of CHATS){tg("sendMessage",{chat_id:c,text:otext(o),reply_markup:kb(o.id)})}
    return send(res,200,{id:o.id,total:o.total})}
   if(p.startsWith("/api/admin/")){
-   if(req.headers["x-admin"]!==PASS){if(hit(bad,ip,10,6e5))return send(res,429,{e:"Кўп уриниш"});return send(res,401,{e:"Парол нотўғри"})}
+   if(!(req.headers["x-admin"]===PASS||isTgAdmin(req.headers["x-tg"]))){if(hit(bad,ip,10,6e5))return send(res,429,{e:"Кўп уриниш"});return send(res,401,{e:"Парол нотўғри"})}
    if(p==="/api/admin/ping")return send(res,200,{ok:1});
    if(p==="/api/admin/orders"){const f=+u.searchParams.get("from")||0,t=+u.searchParams.get("to")||9e15;await Promise.all([...days].filter(d=>d>=day(f)&&d<=day(Math.min(t,Date.now()))).map(loadDay));return send(res,200,orders.filter(o=>o.t>=f&&o.t<=t).sort((a,b)=>b.t-a.t))}
    if(p==="/api/admin/users")return send(res,200,users.map(({k,tok,...x})=>({...x,n:orders.filter(o=>o.phone.replace(/\D/g,"")===k).length})).reverse());
