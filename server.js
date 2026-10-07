@@ -5,7 +5,9 @@ console.log("Oybek Osh сервер v3");
 const E=Object.fromEntries(Object.entries(process.env).map(([k,v])=>[k,clean(v,k)])),PORT=+E.PORT||3000,PASS=E.ADMIN_PASSWORD||"admin123",BOT=E.BOT_TOKEN||"",
   CHATS=(E.ADMIN_CHAT_ID||"").split(",").map(x=>x.trim()).filter(Boolean),FEE=+E.DELIVERY_FEE||12000;
 const PUBURL=(E.PUBLIC_URL||E.RENDER_EXTERNAL_URL||"").replace(/\/$/,""),HOOK=BOT?crypto.createHash("sha256").update(BOT).digest("hex").slice(0,32):"x";
-const UR=E.UPSTASH_REDIS_REST_URL,UT=E.UPSTASH_REDIS_REST_TOKEN;
+const rawEnv=k=>String(process.env[k]||"");
+const UR=(/https?:\/\/[^\s"']+/.exec(rawEnv("UPSTASH_REDIS_REST_URL"))||[""])[0];
+const UT=(()=>{const v=rawEnv("UPSTASH_REDIS_REST_TOKEN"),m=/UPSTASH_REDIS_REST_TOKEN\s*=\s*["']?([^"'\s]+)/.exec(v);return m?m[1]:clean(v,"UPSTASH_REDIS_REST_TOKEN")})();
 if(UR&&!/^https?:\/\/[^\s]+$/.test(UR)){console.error("UPSTASH_REDIS_REST_URL нотўғри. Керак: https://....upstash.io  Ҳозир: "+UR.slice(0,40));process.exit(1)}
 if(UR&&!UT){console.error("UPSTASH_REDIS_REST_TOKEN киритилмаган");process.exit(1)}
 const DIR=path.join(__dirname,"data"),KV=path.join(DIR,"kv.json"),PUB=fs.existsSync(path.join(__dirname,"public"))?path.join(__dirname,"public"):__dirname;
