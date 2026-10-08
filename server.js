@@ -24,14 +24,14 @@ let mem={};try{mem=JSON.parse(fs.readFileSync(KV,"utf8"))}catch(e){}
 async function rq(c){const r=await fetch(UR,{method:"POST",headers:{Authorization:"Bearer "+UT,"Content-Type":"application/json"},body:JSON.stringify(c)}),j=await r.json();if(j.error)throw new Error(j.error);return j}
 const store={async get(k){if(UR)return(await rq(["GET",k])).result;return mem[k]===undefined?null:mem[k]},
  async set(k,v){if(UR){await rq(["SET",k,v])}else{mem[k]=v;fs.writeFileSync(KV+".tmp",JSON.stringify(mem));fs.renameSync(KV+".tmp",KV)}}};
-let menu=SEED,orders=[],users=[],seq=1000,imgs={},days=new Set(),loaded=new Set(),chain=Promise.resolve();
+let staff=[],menu=SEED,orders=[],users=[],seq=1000,imgs={},days=new Set(),loaded=new Set(),chain=Promise.resolve();
 const day=t=>new Date(t).toISOString().slice(0,10);
 const put=(k,f)=>{chain=chain.then(()=>store.set(k,f())).catch(()=>store.set(k,f())).catch(e=>console.error("САҚЛАНМАДИ",k,e.message))};
-const pMenu=()=>put("menu",()=>JSON.stringify(menu)),pUsers=()=>put("users",()=>JSON.stringify(users)),pSeq=()=>put("seq",()=>String(seq)),pImg=id=>put("img:"+id,()=>imgs[id]);
+const pMenu=()=>put("menu",()=>JSON.stringify(menu)),pUsers=()=>put("users",()=>JSON.stringify(users)),pStaff=()=>put("staff",()=>JSON.stringify(staff)),pSeq=()=>put("seq",()=>String(seq)),pImg=id=>put("img:"+id,()=>imgs[id]);
 const pDay=d=>{put("o:"+d,()=>JSON.stringify(orders.filter(o=>day(o.t)===d)));if(!days.has(d)){days.add(d);loaded.add(d);put("days",()=>JSON.stringify([...days]))}};
 async function loadDay(d){if(loaded.has(d)||!days.has(d))return;loaded.add(d);const v=await store.get("o:"+d);if(v)orders.push(...JSON.parse(v))}
 async function load(){const J=async k=>{const v=await store.get(k);return v?JSON.parse(v):null};
- menu=(await J("menu"))||SEED;users=(await J("users"))||[];days=new Set((await J("days"))||[]);
+ menu=(await J("menu"))||SEED;users=(await J("users"))||[];staff=(await J("staff"))||[];days=new Set((await J("days"))||[]);
  await Promise.all([...days].sort().slice(-45).map(loadDay));
  await Promise.all(menu.filter(m=>m.img.startsWith("/img/")).map(async m=>{const v=await store.get("img:"+m.id);if(v)imgs[m.id]=v}));
  seq=Math.max(+(await store.get("seq"))||1000,...orders.map(o=>o.id))}
@@ -41,8 +41,21 @@ async function tg(m,b){if(!BOT)return;try{return await(await fetch(`${E.TG_API||
 const kb=id=>({inline_keyboard:[[{text:"👨‍🍳 Тайёрланмоқда",callback_data:`s:${id}:1`},{text:"🛵 Йўлда",callback_data:`s:${id}:2`}],[{text:"🏠 Етказилди",callback_data:`s:${id}:3`},{text:"❌ Бекор",callback_data:`s:${id}:4`}]]});
 const otext=o=>`🛵 Буюртма №${o.id}\n`+o.items.map(i=>`• ${i.n} × ${i.q} — ${fmt(i.p*i.q)}`).join("\n")+`\nЕтказиш: ${fmt(o.fee)}\n💰 Жами: ${fmt(o.total)}\n\n👤 ${o.name}\n📞 ${o.phone}\n📍 ${o.address}`+(o.landmark?`\n🧭 ${o.landmark}`:"")+`\n\nҲолат: ${EM[o.s]} ${ST[o.s]}`;
 function setStatus(o,s){o.s=s;o.ts=o.ts||{};o.ts[s]=Date.now();pDay(day(o.t))}
-async function onUpdate(u){const q=u.callback_query;if(!q)return;
-  if(!CHATS.includes(String(q.from.id))&&!CHATS.includes(String(q.message&&q.message.chat.id)))return;
+const isStaff=id=>CHATS.includes(String(id))||staff.some(x=>String(x.id)===String(id));
+const recv=()=>[...new Set([...CHATS,...staff.map(x=>String(x.id))])];
+const openKb=()=>PUBURL.startsWith("https://")?{inline_keyboard:[[{text:"🍽 Буюртма бериш",web_app:{url:PUBURL}}]]}:undefined;
+async function onMsg(m){if(!m.text||m.chat.type!=="private")return;const id=String(m.from.id),t=m.text.trim(),say=(x,k)=>tg("sendMessage",{chat_id:id,text:x,reply_markup:k});
+ const pw=/^\/login(?:@\w+)?\s+(.+)$/i.exec(t),bare=!t.startsWith("/")&&t===PASS;
+ if(pw||bare){const w=pw?pw[1].trim():t;
+  if(hit(rate,"l"+id,5,6e5))return say("Кўп уриниш. 10 дақиқадан кейин қайта уриниб кўринг.");
+  tg("deleteMessage",{chat_id:id,message_id:m.message_id});
+  if(w!==PASS)return say("❌ Парол нотўғри.");
+  if(!staff.some(x=>String(x.id)===id)){staff.push({id:m.from.id,name:[m.from.first_name,m.from.last_name].filter(Boolean).join(" ")||m.from.username||id,t:Date.now()});pStaff();await chain}
+  return say("✅ Уландингиз. Энди янги буюртмалар шу ерга келади ва тугмалар орқали ҳолатни ўзгартира оласиз. Сайтда ⚙️ тугма парол сўрамай очилади.\n\nЧиқиш: /logout")}
+ if(/^\/logout/i.test(t)){const n=staff.length;staff=staff.filter(x=>String(x.id)!==id);if(staff.length!==n){pStaff();await chain;return say("Чиқдингиз. Буюртмалар энди келмайди.")}return say("Сиз рўйхатда йўқсиз.")}
+ if(/^\/(start|help)/i.test(t))return isStaff(id)?say("✅ Сиз ишчи сифатида уландингиз. Янги буюртмалар шу ерга келади.\nЧиқиш: /logout",openKb()):say("Хуш келибсиз! Буюртма бериш учун тугмани босинг.\n\nИшчи бўлсангиз: /login ПАРОЛ",openKb())}
+async function onUpdate(u){if(u.message)return onMsg(u.message);const q=u.callback_query;if(!q)return;
+  if(!isStaff(q.from.id)&&!CHATS.includes(String(q.message&&q.message.chat.id)))return;
   const m=/^s:(\d+):(\d)$/.exec(q.data||"");if(!m)return;const o=orders.find(x=>x.id==m[1]);if(!o)return;
   setStatus(o,+m[2]);await chain;await tg("answerCallbackQuery",{callback_query_id:q.id,text:EM[o.s]+" "+ST[o.s]});
   await tg("editMessageText",{chat_id:q.message.chat.id,message_id:q.message.message_id,text:otext(o),reply_markup:o.s>=3?undefined:kb(o.id)})}
@@ -50,7 +63,7 @@ function tgUser(init){try{if(!BOT||!init)return null;const q=new URLSearchParams
  const dcs=[...q.entries()].sort((a,b)=>a[0]<b[0]?-1:1).map(([k,v])=>k+"="+v).join("\n"),sec=crypto.createHmac("sha256","WebAppData").update(BOT).digest(),
  c=crypto.createHmac("sha256",sec).update(dcs).digest("hex");if(c.length!==h.length||!crypto.timingSafeEqual(Buffer.from(c),Buffer.from(h)))return null;
  if(Date.now()/1e3-(+q.get("auth_date")||0)>86400*3)return null;return JSON.parse(q.get("user"))}catch(e){return null}}
-const isTgAdmin=init=>{const u=tgUser(init);return !!u&&CHATS.includes(String(u.id))};
+const isTgAdmin=init=>{const u=tgUser(init);return !!u&&isStaff(u.id)};
 const bad=new Map(),rate=new Map();
 const hit=(m,k,max,ms)=>{const n=Date.now(),a=(m.get(k)||[]).filter(t=>n-t<ms);a.push(n);m.set(k,a);return a.length>max};
 const body=req=>new Promise((ok,no)=>{let b="",n=0;req.on("data",c=>{n+=c.length;if(n>25e6){no();req.destroy()}else b+=c});req.on("end",()=>{try{ok(JSON.parse(b||"{}"))}catch(e){no(e)}})});
@@ -81,13 +94,15 @@ const srv=http.createServer(async(req,res)=>{
     if(!m||!(q>=1&&q<=50))return send(res,400,{e:"Таом топилмади"});if(m.out)return send(res,400,{e:`«${m.n}» тугаган`});items.push({id:m.id,n:m.n,p:m.p,q})}
    const sum=items.reduce((a,i)=>a+i.p*i.q,0),o={id:++seq,t:Date.now(),name,phone,address,landmark,items,sum,fee:FEE,total:sum+FEE,s:0,ts:{0:Date.now()}};
    orders.push(o);pDay(day(o.t));pSeq();await chain;
-   for(const c of CHATS){tg("sendMessage",{chat_id:c,text:otext(o),reply_markup:kb(o.id)})}
+   for(const c of recv()){tg("sendMessage",{chat_id:c,text:otext(o),reply_markup:kb(o.id)})}
    return send(res,200,{id:o.id,total:o.total})}
   if(p.startsWith("/api/admin/")){
    if(!(req.headers["x-admin"]===PASS||isTgAdmin(req.headers["x-tg"]))){if(hit(bad,ip,10,6e5))return send(res,429,{e:"Кўп уриниш"});return send(res,401,{e:"Парол нотўғри"})}
    if(p==="/api/admin/ping")return send(res,200,{ok:1});
    if(p==="/api/admin/orders"){const f=+u.searchParams.get("from")||0,t=+u.searchParams.get("to")||9e15;await Promise.all([...days].filter(d=>d>=day(f)&&d<=day(Math.min(t,Date.now()))).map(loadDay));return send(res,200,orders.filter(o=>o.t>=f&&o.t<=t).sort((a,b)=>b.t-a.t))}
    if(p==="/api/admin/users")return send(res,200,users.map(({k,tok,...x})=>({...x,n:orders.filter(o=>o.phone.replace(/\D/g,"")===k).length})).reverse());
+   if(p==="/api/admin/staff"&&req.method==="GET")return send(res,200,{env:CHATS,staff});
+   if(p==="/api/admin/staff"&&req.method==="POST"){const b=await body(req);staff=staff.filter(x=>String(x.id)!==String(b.id));pStaff();await chain;return send(res,200,{ok:1})}
    if(p==="/api/admin/status"&&req.method==="POST"){const b=await body(req),o=orders.find(x=>x.id==b.id);if(!o||!(b.s>=0&&b.s<=4))return send(res,400,{e:"Хато"});setStatus(o,b.s|0);await chain;return send(res,200,{ok:1})}
    if(p==="/api/admin/menu"&&req.method==="POST"){const b=await body(req);if(!Array.isArray(b)||!b.length)return send(res,400,{e:"Хато"});
     if(b.some(x=>String(x.img||"").startsWith("data:")&&String(x.img).length>900000))return send(res,400,{e:"Расм жуда катта"});
@@ -102,4 +117,4 @@ const srv=http.createServer(async(req,res)=>{
  }catch(e){send(res,500,{e:"Сервер хатоси"})}
 });
 load().then(()=>srv.listen(PORT,async()=>{console.log("Ишга тушди: порт "+PORT+(UR?" · база: Upstash":" · база: файл"));
- if(BOT&&PUBURL){const r=await tg("setWebhook",{url:PUBURL+"/tg/"+HOOK,allowed_updates:["callback_query"]});console.log("Telegram webhook:",r&&r.ok?"уланди":JSON.stringify(r))}else if(BOT)console.log("PUBLIC_URL берилмаган: бот тугмалари ишламайди")})).catch(e=>{console.error("База очилмади:",e.message);process.exit(1)});
+ if(BOT&&PUBURL){const r=await tg("setWebhook",{url:PUBURL+"/tg/"+HOOK,allowed_updates:["callback_query","message"]});console.log("Telegram webhook:",r&&r.ok?"уланди":JSON.stringify(r))}else if(BOT)console.log("PUBLIC_URL берилмаган: бот тугмалари ишламайди")})).catch(e=>{console.error("База очилмади:",e.message);process.exit(1)});
